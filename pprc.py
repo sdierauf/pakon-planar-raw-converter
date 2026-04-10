@@ -72,6 +72,7 @@ def check_raw_file_sizes(raw_files, program_args):
         dimensions_for_convert = None
         
         if program_args.dimensions and len(program_args.dimensions.split("x")) == 2:
+            # Case 1: The user manually provided raw dimensions via CLI flag
             try:
                 width, height = map(int, program_args.dimensions.split("x"))
                 pixel_count = width * height
@@ -82,13 +83,16 @@ def check_raw_file_sizes(raw_files, program_args):
             except ValueError:
                 pass
         else:
+            # Case 2: Attempt to dynamically read the exact dimensions from the raw file binary header
             dimensions_for_convert = parse_raw_header(raw_file)
+            
+            # Case 3: If no header exists, fallback strictly to the legacy size mapping
             if not dimensions_for_convert:
                 dimensions_for_convert = BYTE_SIZE_TO_DIMENSIONS.get(str(size_in_bytes))
 
         if not dimensions_for_convert:
             bad_files.append(raw_file)
-            print(f"{raw_file} is the wrong size - please export via TLXClientDemo in \"Planar\" mode at \"Original height and width\" (or specify dimensions via --dimensions option)", file=sys.stderr)
+            print(f"{raw_file} could not be parsed - please export via TLXClientDemo in \"Planar\" mode (or specify dimensions via --dimensions option)", file=sys.stderr)
         else:
             data[raw_file] = {
                 "size": dimensions_for_convert
@@ -96,12 +100,12 @@ def check_raw_file_sizes(raw_files, program_args):
             
     valid_file_count = len(data)
     if valid_file_count == 0:
-        exit_with_error("Sorry, no .raw files in the current directory are the correct size.")
+        exit_with_error("Sorry, no valid or parseable .raw files were found in the current directory.")
     elif valid_file_count == len(raw_files):
-        print(f"All {valid_file_count} files in the current directory are a correct size...")
+        print(f"All {valid_file_count} files in the current directory were successfully parsed...")
     else:
         is_are = "is" if len(bad_files) == 1 else "are"
-        print(f"{valid_file_count} files will be converted but {len(raw_files)-valid_file_count} ({','.join(bad_files)}) {is_are} the wrong size...")
+        print(f"{valid_file_count} files will be converted but {len(raw_files)-valid_file_count} ({','.join(bad_files)}) {is_are} invalid or could not be parsed...")
 
     return data
 
