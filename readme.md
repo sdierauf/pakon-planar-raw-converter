@@ -136,7 +136,7 @@ Here are some options you can run:
 
 * `--output-dir [dir]`  Specify a different output subdirectory rather than "out".
 
-* `--dimensions [width]x[height]` Specify a non-standard image size if you adjust the framing within TLXClient.
+* `--dimensions [width]x[height]` Specify a non-standard image size if you adjust the framing within TLXClient. This argument is generally optional as the script will automatically parse dimensions straight from the binary .raw header or default to mapped sizes.
 
 * `--e6` Skip running negfix8, apply ImageMagick's -auto-level on files.  Useful when scanning "Film Color: Positive" in TLXClientDemo.
 
