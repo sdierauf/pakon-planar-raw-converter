@@ -30,32 +30,25 @@ Yes, you can use Photoshop's raw file handling to open/convert a planar raw file
 
 ## Installing
 
-You need to have Node, ImageMagick, and Negfix8 on your system, and then install this script "globally" so you can run it from any directory.  Technically all of the above should be possible on any kind of computer, but here's the easiest way to do it if you are on OSX.
+This project is a native Python script. You need to have Python 3, ImageMagick, and Negfix8 on your system. Note that you should install the dependencies using [Homebrew](http://brew.sh/) on OSX.
 
 ### OSX
-
-#### Short version (if you have [homebrew](http://brew.sh/) installed):
-
-* `brew install imagemagick negfix8 node npm`
-* `npm install -g pakon-planar-raw-converter`
-
-#### Long version:
 
 1) Install ["Homebrew"](http://brew.sh/). Homebrew helps install other things on your computer.
 
 2) Open your computer's terminal by pressing CMD-space and typing "terminal" and hitting enter (you might already have this open if you followed Homebrew's installation instructions).
 
-3) Install Node, which runs Javascript outside of your browser. This is needed because even though this script and your scans and your Pakon have nothing to do with the internet, this script is written in Javascript. The easiest way to install it is to type `brew install node npm` in your terminal.  You can also [download an installer](https://nodejs.org/en/) however you may run into [permission issues](https://docs.npmjs.com/getting-started/fixing-npm-permissions) when trying to globally install the script later.
+3) Install ImageMagick and Negfix8 by typing `brew install imagemagick negfix8` in your terminal. You may also install these dependencies manually.
 
-4) Install ImageMagick and Negfix8 by typing `brew install imagemagick negfix8` in your terminal. You may also install these dependencies manually.
+4) Clone or download this repository to your computer.
 
-5) Install PPRC globally via `npm install -g pakon-planar-raw-converter`
+5) From within the repository folder, install PPRC globally by running `./install.sh`. This ensures you can type `pprc` anywhere across your system.
 
 ### Windows
 
 *Note: Please do not try to run PPRC on Windows XP.  Everything will be easier and faster if you install this on a more modern operating system. There is no need to run PPRC from the computer you scanned on.*
 
-1) Install Node via [downloadable installer](https://nodejs.org/en/)
+1) Install Python 3 via [downloadable installer](https://www.python.org/downloads/)
 
 2) Install Imagemagick via [downloadable installer](http://www.imagemagick.org/script/binary-releases.php#windows) (make sure to select "install legacy utilities" as negfix8 needs this)
 
@@ -65,13 +58,13 @@ You need to have Node, ImageMagick, and Negfix8 on your system, and then install
 
 5) Open the command prompt by clicking the start button and searching for "cmd" and running it
 
-6) run `npm install -g pakon-planar-raw-converter`
+6) Navigate to the downloaded script folder and run `python pprc.py`
 
 ------------------
 
 ## Updating
 
-You can check your currently installed version with "pprc --version" and  update with `npm update -g pakon-planar-raw-converter`
+You can update by simply pulling the latest changes from the git repository using `git pull`.
 
 ------------------
 
@@ -136,6 +129,8 @@ By default when you run the command `pprc` in the directory containing your TLXC
 Here are some options you can run:
 
 * `--no-negfix` Don't run negfix8.  This will leave you with TIFFs that look dark and orange but you can use other tools to process them them such as [Vuescan](http://www.hamrick.com/) or [ColorPerfect](http://www.c-f-systems.com/Plug-ins.html).  If you use this options the raw TIFF files will be placed in the output directory.
+
+* `--unadjusted` Skip running negfix8 and do not auto-level. It essentially functions as a straight dump of the planar raw to a viewable tiff format!
 
 * `--output-dir [dir]`  Specify a different output subdirectory rather than "out".
 
