@@ -9,6 +9,7 @@ import concurrent.futures
 import struct
 
 OUTPUT_DIR = "out"
+MAGICK_EXECUTABLE = "magick" if shutil.which("magick") else "convert"
 
 BYTE_SIZE_TO_DIMENSIONS = {
     "36000000": "3000x2000",
@@ -24,12 +25,8 @@ def check_dependencies(program_args):
         print("Skipping Dependancy Check...")
         return
 
-    if sys.platform == "win32":
-        if not shutil.which("magick"):
-            exit_with_error("'magick' from ImageMagick doesn't seem to exist, please install it")
-    else:
-        if not shutil.which("convert"):
-            exit_with_error("'convert' from ImageMagick doesn't seem to exist, please install it")
+    if not shutil.which(MAGICK_EXECUTABLE):
+        exit_with_error(f"'{MAGICK_EXECUTABLE}' from ImageMagick doesn't seem to exist, please install it")
 
     if not shutil.which("negfix8"):
         exit_with_error("'negfix8' doesn't seem to exist, please install it")
@@ -127,11 +124,8 @@ def convert_raw_to_tiff(name, size_parameter, program_args):
     gamma_str = "" if program_args.gamma1 else "-gamma 2.2"
     
     temp_file = destination_file + ".tmp"
-    cmd = f'convert -size {size_parameter} -depth 16 -interlace plane rgb:"{name}" {gamma_str} {extra} -interlace none tif:"{temp_file}"'
+    cmd = f'{MAGICK_EXECUTABLE} -size {size_parameter} -depth 16 -interlace plane rgb:"{name}" {gamma_str} {extra} -interlace none tif:"{temp_file}"'
     
-    if sys.platform == "win32":
-        cmd = f'magick {cmd}'
-        
     subprocess.run(cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return name, temp_file, destination_file
 
