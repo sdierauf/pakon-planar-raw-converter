@@ -1,5 +1,7 @@
 # Pakon Planar Raw Converter (PPRC)
 
+> **Note**: This repository is a fully native Python 3 fork of the original Node.js-based tool. You can find the original version created by Ali Bosworth here: [alibosworth/pakon-planar-raw-converter](https://github.com/alibosworth/pakon-planar-raw-converter).
+
 This is a small script to automate the process of converting the 16-bit Planar Raw files produced by TLXClientDemo into useful images.  Behind the scenes [ImageMagick](http://www.imagemagick.org/) is used to convert the planar file to a 16-bit TIFF and [Negfix8](https://sites.google.com/site/negfix/) is optionally used to invert/balance the negative scan.
 
 The result of this is "normal" looking files that contain all the data that the Pakon 135+ is able to save, or optionally just dark/orange negative "linear scan" TIFF files that you can then process via tools like [Vuescan](http://www.hamrick.com/) or [ColorPerfect](http://www.c-f-systems.com/Plug-ins.html).  Additionally the "--e6", "--bw", or "--bw-rgb" options may be used to perform additional steps via ImageMagick on the TIFF file instead of Negfix8.  You may need to use the [TLX_ScanEnable](https://github.com/sgharvey/pakon-tlx-addons) AutoIt script to enable B&W and Positive scanning modes that make these options useful.
