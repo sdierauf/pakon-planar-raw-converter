@@ -339,8 +339,8 @@ def check_dependencies(program_args):
         print("Skipping Dependency Check...")
         return
 
-    if not shutil.which("negfix8") and not (program_args.no_negfix or program_args.e6 or program_args.unadjusted or program_args.bw or program_args.bw_rgb):
-        exit_with_error("'negfix8' doesn't seem to exist, please install it.")
+    if not shutil.which("negfix8") and not program_args.no_negfix:
+        exit_with_error("'negfix8' doesn't seem to exist, please install it or run without --negfix.")
 
 def exit_with_error(message, item=None):
     if item:
@@ -546,13 +546,14 @@ def main():
     parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS, help='Show this help message and exit.')
     parser.add_argument('-V', '--version', action='version', version='0.0.13')
     parser.add_argument('--output-dir', default=OUTPUT_DIR, dest='output_dir', metavar='[dir]', help=f'Override the default the output sub-directory of "{OUTPUT_DIR}"')
-    parser.add_argument('--no-negfix', action='store_true', help='Skip running negfix8, leaving you with raw .tiff files for further processing with another tool')
+    parser.add_argument('--negfix', action='store_false', dest='no_negfix', help='Run negfix8 to balance and invert colors (default: skipped)')
+    parser.add_argument('--no-negfix', action='store_true', default=True, help=argparse.SUPPRESS) # Keep as hidden for compatibility
     parser.add_argument('--no-dependency-check', action='store_true', help='Avoid checking for dependencies')
     parser.add_argument('--dimensions', metavar='[width]x[height]', help='Manually specify pixel dimensions of raw file (useful for xpan, etc) format like "3000x2000"')
-    parser.add_argument('--e6', action='store_true', help='Skip running negfix8, natively apply an -auto-level algorithm on files. Useful when scanning "Film Color: Positive" in TLXClientDemo')
-    parser.add_argument('--unadjusted', action='store_true', help='Skip running negfix8 and do not auto-level, basically just converts planar raws to tifs')
-    parser.add_argument('--bw', action='store_true', help='Skip running negfix8, instead natively do the following: invert, auto-level, and save in grey-scale colorspace')
-    parser.add_argument('--bw-rgb', dest='bw_rgb', action='store_true', help='Skip running negfix8, instead natively do the following: invert, auto-level, and save in RGB colorspace')
+    parser.add_argument('--e6', action='store_true', help='Apply an -auto-level algorithm on files. Useful when scanning "Film Color: Positive" in TLXClientDemo')
+    parser.add_argument('--unadjusted', action='store_true', help='Do not auto-level, basically just converts planar raws to tifs')
+    parser.add_argument('--bw', action='store_true', help='Natively do the following: invert, auto-level, and save in grey-scale colorspace')
+    parser.add_argument('--bw-rgb', dest='bw_rgb', action='store_true', help='Natively do the following: invert, auto-level, and save in RGB colorspace')
     parser.add_argument('--gamma1', action='store_true', help='Do not apply a 2.2 gamma correction when converting the raw file, instead leaving it "linear", with a 1.0 gamma')
     
     args = parser.parse_args()

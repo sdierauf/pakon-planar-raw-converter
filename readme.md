@@ -109,25 +109,27 @@ You must run this program from your computer's "terminal", that means that it is
 
 By default when you run the command `pprc` in the directory containing your TLXClientDemo exported raw files the following things will happen:
 
-1) The planar .raw files will be converted to raw TIFF files left in place.
+1) The planar .raw files are converted to raw TIFF files.
 
-2) Negfix8 is run on these TIFF files and these files are placed in the "out" directory.
+2) These files are placed in the "out" directory (or a custom directory specified via `--output-dir`).
+
+Note: To run the legacy inversion / color balancing via Negfix8, you must now explicitly pass the `--negfix` flag.
 
 Here are some options you can run:
 
-* `--no-negfix` Don't run negfix8.  This will leave you with TIFFs that look dark and orange but you can use other tools to process them them such as [Vuescan](http://www.hamrick.com/) or [ColorPerfect](http://www.c-f-systems.com/Plug-ins.html).  If you use this options the raw TIFF files will be placed in the output directory.
+* `--negfix` Run negfix8 to balance and invert colors (legacy behavior). This requires `negfix8` to be installed on your system.
 
-* `--unadjusted` Skip running negfix8 and do not auto-level. It essentially functions as a straight dump of the planar raw to a viewable tiff format!
+* `--unadjusted` Skip all auto-leveling. It essentially functions as a straight dump of the planar raw to a viewable tiff format!
 
 * `--output-dir [dir]`  Specify a different output subdirectory rather than "out".
 
 * `--dimensions [width]x[height]` Specify a non-standard image size if you adjust the framing within TLXClient. This argument is generally optional as the script will automatically parse dimensions straight from the binary .raw header or default to mapped sizes.
 
-* `--e6` Skip running negfix8, apply an auto-level curve to the files in-memory.  Useful when scanning "Film Color: Positive" in TLXClientDemo.
+* `--e6` Apply an auto-level curve to the files in-memory. Useful when scanning "Film Color: Positive" in TLXClientDemo.
 
-* `--bw` Skip running negfix8, instead do the following in-memory: invert, auto-level, and save as grey-scale colorspace.
+* `--bw` Natively do the following in-memory: invert, auto-level, and save as grey-scale colorspace.
 
-* `--bw-rgb` Skip running negfix8, instead do the following in-memory: invert, auto-level, and save in RGB colorspace.
+* `--bw-rgb` Natively do the following in-memory: invert, auto-level, and save in RGB colorspace.
 
 * `--no-dependency-check` Skip the dependency check.  Currently necessary to run the script on Windows XP.
 
