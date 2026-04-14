@@ -12,6 +12,7 @@ import functools
 import ctypes
 import tempfile
 import hashlib
+import re
 
 # ---------------------------------------------------------------------------
 # C extension for ~200× speedup over Python map() on LUT application
@@ -357,6 +358,10 @@ def scan_directory_for_files():
         print(f"Found {len(raw_files)} raw files in current directory...")
         return raw_files
 
+def natural_sort_key(s: str) -> tuple:
+    """Converts string into a sequence of (number, string) tuples for correct numeric sorting."""
+    return tuple(int(c) if c.isdigit() else c.lower() for c in re.sub('([0-9]+)', r' \1 ', s).split())
+
 def parse_raw_header(raw_file):
     """Attempt to read width/height/bpp directly from the 16-byte binary header
     that TLXClientDemo optionally prepends to planar raw files."""
@@ -486,7 +491,7 @@ def convert_raw_files_to_tiff(data, program_args):
     # Sort by original filename so writes to disk happen in filename order.
     # This ensures filesystem mtime increases monotonically, which guarantees
     # correct chronological ordering when imported into apps like Apple Photos.
-    results.sort(key=lambda x: x[0])
+    results.sort(key=lambda x: natural_sort_key(x[0]))
     
     tifs = []
     for name, tiff_bytes, destination_file in results:
@@ -530,7 +535,7 @@ def adjust_tifs_with_negfix8(tifs, program_args):
     # Make sure negfix 8 output writes happen sequentially based on original filename
     # to maintain chronological sequence for imports.
     result = []
-    results.sort(key=lambda x: x[0])
+    results.sort(key=lambda x: natural_sort_key(x[0]))
     for tif, temp_dest, output_dest in results:
         if temp_dest and output_dest:
             shutil.move(temp_dest, output_dest)
