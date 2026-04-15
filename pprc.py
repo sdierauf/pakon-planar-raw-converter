@@ -153,8 +153,8 @@ def generate_lut(program_args, plane_data) -> array.array:
 
     Transform order (all composed into one 65536-entry table):
       1. Auto-level  — stretch channel min→0, max→65535
-      2. Gamma 2.2   — power curve for display encoding
-      3. Negate      — invert for B&W / positive-film modes
+      2. Negate      — invert for B&W / positive-film modes (applied lineary)
+      3. Gamma 2.2   — power curve for display encoding
     """
     needs_autolevel = program_args.e6 or program_args.bw or program_args.bw_rgb
     needs_negate    = program_args.bw or program_args.bw_rgb
@@ -170,11 +170,11 @@ def generate_lut(program_args, plane_data) -> array.array:
         max_val = max(plane_data)
         if max_val > min_val:
             diff = max_val - min_val
-            # Compose auto-level + gamma (+ optional negate) in a single pass.
+            # Compose auto-level + negate + gamma in a single pass.
             # Integer // avoids float overhead; clamp replaces conditional branches.
             if needs_negate:
                 return array.array('H', (
-                    65535 - gamma_lut[max(0, min(65535, (i - min_val) * 65535 // diff))]
+                    gamma_lut[65535 - max(0, min(65535, (i - min_val) * 65535 // diff))]
                     for i in range(65536)
                 ))
             else:
@@ -184,7 +184,7 @@ def generate_lut(program_args, plane_data) -> array.array:
                 ))
 
     if needs_negate:
-        return array.array('H', (65535 - gamma_lut[i] for i in range(65536)))
+        return array.array('H', (gamma_lut[65535 - i] for i in range(65536)))
 
     return gamma_lut  # flat channel edge case falls through here
 
@@ -253,6 +253,10 @@ def convert_planar_raw(raw_bytes, program_args, w, h) -> bytes:
     # Decode the raw bytes into a flat array of uint16 values
     data = array.array('H')
     data.frombytes(raw_bytes)
+    
+    # Handle Big-Endian architecture edge case (TIFF is explicitly Little-Endian)
+    if sys.byteorder == 'big':
+        data.byteswap()
 
     # Slice out the three contiguous planes — these are views, not copies
     R = data[0:pixels]
@@ -320,6 +324,10 @@ def convert_planar_raw(raw_bytes, program_args, w, h) -> bytes:
         out[0::3] = R
         out[1::3] = G
         out[2::3] = B
+
+    # Swap back to Little-Endian before creating the TIFF header if on Big-Endian architecture
+    if sys.byteorder == 'big':
+        out.byteswap()
 
     return out.tobytes()
 
@@ -470,6 +478,10 @@ def convert_raw_files_to_tiff(data, program_args):
     sys.stdout.flush()
     
     results = []
+    
+    # Trigger the C compiler synchronously on the main thread once to prevent race 
+    # conditions before spinning up the concurrent workers.
+    _load_c_extension()
     
     # ThreadPoolExecutor is ideal here: ctypes releases the GIL during the C extension
     # call, so threads run the LUT+interleave work in true parallel across all cores.
