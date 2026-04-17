@@ -193,7 +193,7 @@ def generate_lut(program_args, plane_data) -> array.array:
 # TIFF writer — purely in-memory, no disk I/O
 # ---------------------------------------------------------------------------
 
-def create_tiff_16bit_rgb_bytes(width, height, data_bytes) -> bytes:
+def create_tiff_16bit_rgb_bytes(width, height, data_bytes, dt_str=None) -> bytes:
     """
     Construct a valid uncompressed 16-bit RGB TIFF byte string entirely in memory.
     Writes a minimal TIFF Image File Directory (IFD) followed by the raw pixel data.
@@ -209,28 +209,67 @@ def create_tiff_16bit_rgb_bytes(width, height, data_bytes) -> bytes:
         # type 3 = SHORT (uint16), type 4 = LONG (uint32)
         tags.append(struct.pack("<HHII", tag, type_, count, val_or_offset))
 
+    has_datetime = bool(dt_str)
+    # We add 256, 257, 258, 259, 262, 273, 277, 278, 279, 284 = 10 base tags
+    # Plus 271 (Make), 272 (Model), 305 (Software) = 3 extra tags => 13 base tags
+    # Plus 306 & 34665 if has_datetime => 15 tags max
+    num_tags = 15 if has_datetime else 13
+
+    bps_offset = 8 + 2 + num_tags * 12 + 4
+    
+    # Static string pointers
+    make_offset = bps_offset + 6
+    model_offset = make_offset + 6
+    software_offset = model_offset + 12
+    
+    if has_datetime:
+        dt_offset = software_offset + 6
+        exif_ifd_offset = dt_offset + 20
+        data_offset = exif_ifd_offset + 30
+    else:
+        dt_offset = 0
+        exif_ifd_offset = 0
+        data_offset = software_offset + 6
+
     add_tag(256, 3, 1, width)    # ImageWidth
     add_tag(257, 3, 1, height)   # ImageLength
-
-    # BitsPerSample has 3 values (one per channel) so it can't fit inline — use an offset.
-    # Layout: header(8) + entry_count(2) + 10 entries × 12 bytes + next_IFD(4) = 134 bytes
-    bps_offset = 8 + 2 + 10 * 12 + 4
-    add_tag(258, 3, 3, bps_offset)   # BitsPerSample → (16, 16, 16) stored at bps_offset
-
+    add_tag(258, 3, 3, bps_offset)   # BitsPerSample
     add_tag(259, 3, 1, 1)   # Compression: 1 = uncompressed
     add_tag(262, 3, 1, 2)   # PhotometricInterpretation: 2 = RGB
-
-    data_offset = bps_offset + 6  # pixel data starts right after the 6-byte BPS array
-    add_tag(273, 4, 1, data_offset)  # StripOffsets
-    add_tag(277, 3, 1, 3)            # SamplesPerPixel
-    add_tag(278, 4, 1, height)       # RowsPerStrip (single strip for simplicity)
+    add_tag(271, 2, 6, make_offset)      # Make
+    add_tag(272, 2, 11, model_offset)    # Model
+    add_tag(273, 4, 1, data_offset)      # StripOffsets
+    add_tag(277, 3, 1, 3)                # SamplesPerPixel
+    add_tag(278, 4, 1, height)           # RowsPerStrip (single strip for simplicity)
     add_tag(279, 4, 1, len(data_bytes))  # StripByteCounts
-    add_tag(284, 3, 1, 1)            # PlanarConfiguration: 1 = chunky (RGBRGB…)
+    add_tag(284, 3, 1, 1)                # PlanarConfiguration: 1 = chunky (RGBRGB…)
+    add_tag(305, 2, 5, software_offset)  # Software
+    
+    if has_datetime:
+        add_tag(306, 2, 20, dt_offset)        # DateTime
+        add_tag(34665, 4, 1, exif_ifd_offset) # ExifOffset
 
-    ifd      = struct.pack("<H", len(tags)) + b"".join(tags) + struct.pack("<I", 0)
+    ifd = struct.pack("<H", len(tags)) + b"".join(tags) + struct.pack("<I", 0)
     bps_data = struct.pack("<HHH", 16, 16, 16)
 
-    return header + ifd + bps_data + data_bytes
+    out_parts = [header, ifd, bps_data]
+    
+    out_parts.append(b"Pakon\0")
+    out_parts.append(b"F-135 Plus\0\0") # 12 bytes
+    out_parts.append(b"PPRC\0\0")       # 6 bytes
+    
+    if has_datetime:
+        dt_bytes = dt_str.encode('ascii')[:19].ljust(19, b' ') + b'\0'
+        out_parts.append(dt_bytes)
+        
+        exif_tags = []
+        exif_tags.append(struct.pack("<HHII", 36867, 2, 20, dt_offset)) # DateTimeOriginal
+        exif_tags.append(struct.pack("<HHII", 36868, 2, 20, dt_offset)) # DateTimeDigitized
+        exif_ifd = struct.pack("<H", len(exif_tags)) + b"".join(exif_tags) + struct.pack("<I", 0)
+        out_parts.append(exif_ifd)
+        
+    out_parts.append(data_bytes)
+    return b"".join(out_parts)
 
 # ---------------------------------------------------------------------------
 # Main conversion — C path with Python fallback
@@ -433,7 +472,7 @@ def check_raw_file_sizes(raw_files, program_args):
 
     return data
 
-def convert_raw_to_tiff(name, size_parameter, program_args):
+def convert_raw_to_tiff(name, size_parameter, program_args, dt_str):
     """
     Reads the raw planar bytes for a single file and returns the fully converted
     16-bit RGB TIFF as an in-memory bytes object. No temporary files are written.
@@ -460,7 +499,7 @@ def convert_raw_to_tiff(name, size_parameter, program_args):
     converted_bytes = convert_planar_raw(raw_bytes, program_args, w, h)
     
     # Build the complete TIFF file bytes in memory — no disk I/O until final write
-    tiff_bytes = create_tiff_16bit_rgb_bytes(w, h, converted_bytes)
+    tiff_bytes = create_tiff_16bit_rgb_bytes(w, h, converted_bytes, dt_str)
     
     return name, tiff_bytes, destination_file
 
@@ -482,9 +521,28 @@ def convert_raw_files_to_tiff(data, program_args):
     # call, so threads run the LUT+interleave work in true parallel across all cores.
     # Unlike ProcessPoolExecutor, threads share memory so there's zero pickle or IPC
     # overhead — no 36MB TIFF needs to be serialised between processes per image.
+    # Pre-calculate chronological EXIF timestamps for imports
+    import datetime
+    sorted_files = sorted(data.keys(), key=natural_sort_key)
+    file_datetimes = {}
+    last_mtime = 0
+    for f_name in sorted_files:
+        try:
+            mtime = os.path.getmtime(f_name)
+        except Exception:
+            mtime = datetime.datetime.now().timestamp()
+            
+        # Ensure strict monotonically increasing mtimes (for exact same timestamps)
+        if mtime <= last_mtime:
+            mtime = last_mtime + 1
+        last_mtime = mtime
+        
+        dt = datetime.datetime.fromtimestamp(mtime)
+        file_datetimes[f_name] = dt.strftime("%Y:%m:%d %H:%M:%S")
+
     max_workers = os.cpu_count() or 4
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(convert_raw_to_tiff, item, info["size"], program_args): item for item, info in data.items()}
+        futures = {executor.submit(convert_raw_to_tiff, item, info["size"], program_args, file_datetimes[item]): item for item, info in data.items()}
         for future in concurrent.futures.as_completed(futures):
             item = futures[future]
             try:
@@ -526,8 +584,22 @@ def get_unique_values_per_channel_raw(raw_path: str, offset: int = 16) -> tuple:
     b = set(data[2*pixels:3*pixels])
     return r, g, b
 
-def get_unique_values_per_channel_tiff(tiff_path: str, data_offset: int = 140) -> tuple:
+def get_unique_values_per_channel_tiff(tiff_path: str) -> tuple:
     with open(tiff_path, 'rb') as f:
+        f.seek(4)
+        ifd_offset = struct.unpack('<I', f.read(4))[0]
+        f.seek(ifd_offset)
+        num_tags = struct.unpack('<H', f.read(2))[0]
+        data_offset = 0
+        for _ in range(num_tags):
+            tag_data = f.read(12)
+            if len(tag_data) < 12:
+                break
+            tag, typ, count, val = struct.unpack('<HHII', tag_data)
+            if tag == 273: # StripOffsets
+                data_offset = val
+                break
+        
         f.seek(data_offset)
         tiff_bytes = f.read()
 
@@ -542,6 +614,26 @@ def get_unique_values_per_channel_tiff(tiff_path: str, data_offset: int = 140) -
     b = set(data[2::3])
     return r, g, b
 
+def get_tiff_datetime(tiff_path: str) -> str:
+    with open(tiff_path, 'rb') as f:
+        f.seek(4)
+        ifd_offset = struct.unpack('<I', f.read(4))[0]
+        f.seek(ifd_offset)
+        num_tags = struct.unpack('<H', f.read(2))[0]
+        dt_offset = None
+        for _ in range(num_tags):
+            tag_data = f.read(12)
+            if len(tag_data) < 12:
+                break
+            tag, typ, count, val = struct.unpack('<HHII', tag_data)
+            if tag == 306: # DateTime
+                dt_offset = val
+                break
+        if dt_offset:
+            f.seek(dt_offset)
+            return f.read(19).decode('ascii')
+    return None
+
 def estimate_bit_depth(num_unique_values: int) -> int:
     if num_unique_values <= 1:
         return 1
@@ -551,6 +643,7 @@ def validate_conversions(data, tifs, program_args):
     print("\nVALIDATING...")
     raw_files = list(data.keys())
     raw_files.sort(key=natural_sort_key)
+    last_dt = None
     
     for raw_file, tif_file in zip(raw_files, tifs):
         size_param = data[raw_file]["size"]
@@ -558,11 +651,19 @@ def validate_conversions(data, tifs, program_args):
         offset_bytes = int(parts[1]) if len(parts) > 1 else 0
         
         raw_r, raw_g, raw_b = get_unique_values_per_channel_raw(raw_file, offset_bytes)
-        tiff_r, tiff_g, tiff_b = get_unique_values_per_channel_tiff(tif_file, 140)
+        tiff_r, tiff_g, tiff_b = get_unique_values_per_channel_tiff(tif_file)
+        tiff_dt = get_tiff_datetime(tif_file)
         
         print(f"\n--- Validation for {raw_file} -> {tif_file} ---")
+        if tiff_dt:
+            print(f"TIFF EXIF Time     - {tiff_dt}")
         print(f"RAW unique values  - R: {len(raw_r)} (~{estimate_bit_depth(len(raw_r))}-bit), G: {len(raw_g)} (~{estimate_bit_depth(len(raw_g))}-bit), B: {len(raw_b)} (~{estimate_bit_depth(len(raw_b))}-bit)")
         print(f"TIFF unique values - R: {len(tiff_r)} (~{estimate_bit_depth(len(tiff_r))}-bit), G: {len(tiff_g)} (~{estimate_bit_depth(len(tiff_g))}-bit), B: {len(tiff_b)} (~{estimate_bit_depth(len(tiff_b))}-bit)")
+        
+        if tiff_dt:
+            if last_dt and tiff_dt <= last_dt:
+                exit_with_error(f"Validation failed: TIFF EXIF DateTime '{tiff_dt}' does not strictly follow previous frame '{last_dt}'!", tif_file)
+            last_dt = tiff_dt
         
         for channel, vals in zip(('R', 'G', 'B'), (raw_r, raw_g, raw_b)):
             if len(vals) <= 256:
