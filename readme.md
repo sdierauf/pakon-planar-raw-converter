@@ -2,9 +2,9 @@
 
 > **Note**: This repository is a fully native Python 3 fork of the original Node.js-based tool. You can find the original version created by Ali Bosworth here: [alibosworth/pakon-planar-raw-converter](https://github.com/alibosworth/pakon-planar-raw-converter).
 
-This is a small script to automate the process of converting the 16-bit Planar Raw files produced by TLXClientDemo into useful images.  This implementation skips the ImageMagick dependency and implements the planar-to-TIFF conversion and autoleveling in native Python and C, and [Negfix8](https://sites.google.com/site/negfix/) is optionally used to invert/balance the negative scan.
+This is a small script to automate the process of converting the 16-bit Planar Raw files produced by TLXClientDemo into useful images.  This implementation skips the ImageMagick dependency and implements the planar-to-TIFF conversion and autoleveling in native Python and C.
 
-The result of this is "normal" looking files that contain all the data that the Pakon 135+ is able to save, or optionally just dark/orange negative "linear scan" TIFF files that you can then process via tools like [Vuescan](http://www.hamrick.com/) or [ColorPerfect](http://www.c-f-systems.com/Plug-ins.html).  Additionally the "--e6", "--bw", or "--bw-rgb" options may be used to perform additional algorithmic steps in-memory on the TIFF file instead of Negfix8.  You may need to use the [TLX_ScanEnable](https://github.com/sgharvey/pakon-tlx-addons) AutoIt script to enable B&W and Positive scanning modes that make these options useful.
+The result of this is "normal" looking files that contain all the data that the Pakon 135+ is able to save, or optionally just dark/orange negative "linear scan" TIFF files that you can then process via tools like [Vuescan](http://www.hamrick.com/) or [ColorPerfect](http://www.c-f-systems.com/Plug-ins.html).  Additionally the "--e6", "--bw", or "--bw-rgb" options may be used to perform additional algorithmic steps in-memory on the TIFF file.  You may need to use the [TLX_ScanEnable](https://github.com/sgharvey/pakon-tlx-addons) AutoIt script to enable B&W and Positive scanning modes that make these options useful.
 
 The benefit of using this workflow is that you get the full 16-bits worth of image data rather than only the 8-bit files exported by PSI.  [Here are some comparisons](https://alibosworth.github.io/pakon-planar-raw-converter/comparison/) of standard PSI output vs TLXCD raw output.
 
@@ -26,13 +26,13 @@ While internally the Pakon 135+ is dealing with 16-bits of image data, PSI can o
 
 ### I can just convert the planar raw files produced by TLXClientDemo with Photoshop, why would I want to use this script?
 
-Yes, you can use Photoshop's raw file handling to open/convert a planar raw file, but you'll have to specify the image details (dimensions, channel count, bit-depth, header offset) each time, and then save out to a TIFF.  This script scans a whole directory of images using the file sizes to automatically know what resolution you've scanned at, then uses fast native Python array interleaving to convert to a standard TIFF (and then if you want also inverts it into a "positive" image using Negfix8).
+Yes, you can use Photoshop's raw file handling to open/convert a planar raw file, but you'll have to specify the image details (dimensions, channel count, bit-depth, header offset) each time, and then save out to a TIFF.  This script scans a whole directory of images using the file sizes to automatically know what resolution you've scanned at, then uses fast native Python array interleaving to convert to a standard TIFF.
 
 ----------------------------------
 
 ## Installing
 
-This project is a native Python script. You need to have Python 3 and Negfix8 on your system. Note that you should install the dependencies using [Homebrew](http://brew.sh/) on OSX.
+This project is a native Python script. You need to have Python 3 on your system.
 
 ### OSX
 
@@ -40,9 +40,7 @@ This project is a native Python script. You need to have Python 3 and Negfix8 on
 
 2) Open your computer's terminal by pressing CMD-space and typing "terminal" and hitting enter (you might already have this open if you followed Homebrew's installation instructions).
 
-3) Install the dependencies by typing `brew install negfix8` in your terminal. You may also install these dependencies manually.
-
-4) Clone or download this repository to your computer.
+3) Clone or download this repository to your computer.
 
 5) From within the repository folder, install PPRC globally by running `./install.sh`. This ensures you can type `pprc` anywhere across your system.
 
@@ -113,11 +111,7 @@ By default when you run the command `pprc` in the directory containing your TLXC
 
 2) These files are placed in the "out" directory (or a custom directory specified via `--output-dir`).
 
-Note: To run the legacy inversion / color balancing via Negfix8, you must now explicitly pass the `--negfix` flag.
-
 Here are some options you can run:
-
-* `--negfix` Run negfix8 to balance and invert colors (legacy behavior). This requires `negfix8` to be installed on your system.
 
 * `--unadjusted` Skip all auto-leveling. It essentially functions as a straight dump of the planar raw to a viewable tiff format!
 

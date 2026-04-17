@@ -13,6 +13,7 @@ import ctypes
 import tempfile
 import hashlib
 import re
+import math
 
 # ---------------------------------------------------------------------------
 # C extension for ~200× speedup over Python map() on LUT application
@@ -348,9 +349,6 @@ def check_dependencies(program_args):
         print("Skipping Dependency Check...")
         return
 
-    if not shutil.which("negfix8") and not program_args.no_negfix:
-        exit_with_error("'negfix8' doesn't seem to exist, please install it or run without --negfix.")
-
 def exit_with_error(message, item=None):
     if item:
         print(f"ERROR: {message} {item}", file=sys.stderr)
@@ -444,11 +442,8 @@ def convert_raw_to_tiff(name, size_parameter, program_args):
     base_name = os.path.splitext(name)[0]
     destination_file = f"{base_name}.tif"
     
-    # If no negfix logic will be applied subsequently, the final path goes straight
-    # into the output directory rather than being left alongside the source file.
-    no_negfix = program_args.no_negfix or program_args.e6 or program_args.unadjusted or program_args.bw or program_args.bw_rgb
-    if no_negfix:
-        destination_file = os.path.join(program_args.output_dir, destination_file)
+    # The final path goes straight into the output directory
+    destination_file = os.path.join(program_args.output_dir, destination_file)
         
     # Parse "WxH" or "WxH+offset" size string produced by check_raw_file_sizes
     parts = size_parameter.split('+')
@@ -510,52 +505,77 @@ def convert_raw_files_to_tiff(data, program_args):
         # Atomic write: all TIFF data was held in RAM, now flushed to disk in order
         with open(destination_file, 'wb') as f:
             f.write(tiff_bytes)
-        # Track final tif path for the optional negfix8 pass
-        no_negfix = program_args.no_negfix or program_args.e6 or program_args.unadjusted or program_args.bw or program_args.bw_rgb
-        tifs.append(destination_file if no_negfix else f"{os.path.splitext(name)[0]}.tif")
+        tifs.append(destination_file)
 
     return tifs
 
-def adjust_tifs_with_negfix8(tifs, program_args):
-    sys.stdout.write("ADJUSTING: ")
-    sys.stdout.flush()
+def get_unique_values_per_channel_raw(raw_path: str, offset: int = 16) -> tuple:
+    with open(raw_path, 'rb') as f:
+        f.seek(offset)
+        raw_bytes = f.read()
     
-    def process_negfix(tif):
-        output_dest = f"{program_args.output_dir}/{tif}"
-        temp_dest = f"{output_dest}.tmp"
-        cmd = f'negfix8 -cs "{tif}" "{temp_dest}"'
-        try:
-            subprocess.run(cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            return tif, temp_dest, output_dest
-        except subprocess.CalledProcessError:
-            return tif, None, None
+    data = array.array('H')
+    data.frombytes(raw_bytes)
+    
+    if sys.byteorder == 'big':
+        data.byteswap()
+        
+    pixels = len(data) // 3
+    r = set(data[0:pixels])
+    g = set(data[pixels:2*pixels])
+    b = set(data[2*pixels:3*pixels])
+    return r, g, b
 
-    results = []
-    max_workers = os.cpu_count() or 4
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(process_negfix, tif): tif for tif in tifs}
-        for future in concurrent.futures.as_completed(futures):
-            tif = futures[future]
-            try:
-                res = future.result()
-                results.append(res)
-                sys.stdout.write(" ▢ ")
-                sys.stdout.flush()
-            except Exception as exc:
-                print(f"\nError converting {tif}", file=sys.stderr)
-                
-    # Make sure negfix 8 output writes happen sequentially based on original filename
-    # to maintain chronological sequence for imports.
-    result = []
-    results.sort(key=lambda x: natural_sort_key(x[0]))
-    for tif, temp_dest, output_dest in results:
-        if temp_dest and output_dest:
-            shutil.move(temp_dest, output_dest)
-            result.append(tif)
-        else:
-            print(f"\nError converting {tif} to {program_args.output_dir}/{tif}", file=sys.stderr)
-            
-    return result
+def get_unique_values_per_channel_tiff(tiff_path: str, data_offset: int = 140) -> tuple:
+    with open(tiff_path, 'rb') as f:
+        f.seek(data_offset)
+        tiff_bytes = f.read()
+
+    data = array.array('H')
+    data.frombytes(tiff_bytes)
+    
+    if sys.byteorder == 'big':
+        data.byteswap()
+        
+    r = set(data[0::3])
+    g = set(data[1::3])
+    b = set(data[2::3])
+    return r, g, b
+
+def estimate_bit_depth(num_unique_values: int) -> int:
+    if num_unique_values <= 1:
+        return 1
+    return math.ceil(math.log2(num_unique_values))
+
+def validate_conversions(data, tifs, program_args):
+    print("\nVALIDATING...")
+    raw_files = list(data.keys())
+    raw_files.sort(key=natural_sort_key)
+    
+    for raw_file, tif_file in zip(raw_files, tifs):
+        size_param = data[raw_file]["size"]
+        parts = size_param.split('+')
+        offset_bytes = int(parts[1]) if len(parts) > 1 else 0
+        
+        raw_r, raw_g, raw_b = get_unique_values_per_channel_raw(raw_file, offset_bytes)
+        tiff_r, tiff_g, tiff_b = get_unique_values_per_channel_tiff(tif_file, 140)
+        
+        print(f"\n--- Validation for {raw_file} -> {tif_file} ---")
+        print(f"RAW unique values  - R: {len(raw_r)} (~{estimate_bit_depth(len(raw_r))}-bit), G: {len(raw_g)} (~{estimate_bit_depth(len(raw_g))}-bit), B: {len(raw_b)} (~{estimate_bit_depth(len(raw_b))}-bit)")
+        print(f"TIFF unique values - R: {len(tiff_r)} (~{estimate_bit_depth(len(tiff_r))}-bit), G: {len(tiff_g)} (~{estimate_bit_depth(len(tiff_g))}-bit), B: {len(tiff_b)} (~{estimate_bit_depth(len(tiff_b))}-bit)")
+        
+        for channel, vals in zip(('R', 'G', 'B'), (raw_r, raw_g, raw_b)):
+            if len(vals) <= 256:
+                exit_with_error(f"Validation failed: Raw {channel} channel seems to be 8-bit equivalent (<= 256 unique values)", raw_file)
+        
+        for channel, vals in zip(('R', 'G', 'B'), (tiff_r, tiff_g, tiff_b)):
+            if len(vals) <= 256:
+                exit_with_error(f"Validation failed: TIFF {channel} channel seems to be 8-bit equivalent (<= 256 unique values)", tif_file)
+        
+        if program_args.unadjusted:
+            if raw_r != tiff_r or raw_g != tiff_g or raw_b != tiff_b:
+                exit_with_error(f"Validation failed: Mismatch in unique values for unadjusted mode!", raw_file)
+    print("Validation passed!")
 
 def main():
     parser = argparse.ArgumentParser(description="A script to convert Pakon F-135+ Planar RAW scans from TLXClientDemo into usable files via native python memory conversion and NegFix8", add_help=False)
@@ -563,8 +583,6 @@ def main():
     parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS, help='Show this help message and exit.')
     parser.add_argument('-V', '--version', action='version', version='0.0.13')
     parser.add_argument('--output-dir', default=OUTPUT_DIR, dest='output_dir', metavar='[dir]', help=f'Override the default the output sub-directory of "{OUTPUT_DIR}"')
-    parser.add_argument('--negfix', action='store_false', dest='no_negfix', help='Run negfix8 to balance and invert colors (default: skipped)')
-    parser.add_argument('--no-negfix', action='store_true', default=True, help=argparse.SUPPRESS) # Keep as hidden for compatibility
     parser.add_argument('--no-dependency-check', action='store_true', help='Avoid checking for dependencies')
     parser.add_argument('--dimensions', metavar='[width]x[height]', help='Manually specify pixel dimensions of raw file (useful for xpan, etc) format like "3000x2000"')
     parser.add_argument('--e6', action='store_true', help='Apply an -auto-level algorithm on files. Useful when scanning "Film Color: Positive" in TLXClientDemo')
@@ -572,6 +590,7 @@ def main():
     parser.add_argument('--bw', action='store_true', help='Natively do the following: invert, auto-level, and save in grey-scale colorspace')
     parser.add_argument('--bw-rgb', dest='bw_rgb', action='store_true', help='Natively do the following: invert, auto-level, and save in RGB colorspace')
     parser.add_argument('--gamma1', action='store_true', help='Do not apply a 2.2 gamma correction when converting the raw file, instead leaving it "linear", with a 1.0 gamma')
+    parser.add_argument('--validate', action='store_true', help='Validate the input raw and output tiff bit depth immediately after conversion')
     
     args = parser.parse_args()
     
@@ -586,25 +605,21 @@ def main():
     
     sys.stdout.write("\n")
     
-    if args.no_negfix or args.e6 or args.unadjusted or args.bw or args.bw_rgb:
-        verb = "raw"
-        if args.e6:
-            verb = "auto-leveled"
-        elif args.unadjusted:
-            verb = "unadjusted"
-        elif args.bw:
-            verb = "inverted and auto-leveled greyscale"
-        elif args.bw_rgb:
-            verb = "inverted and auto-leveled RGB"
-            
-        file_word = "file" if len(tifs) == 1 else "files"
-        print(f"Done. {len(tifs)} {file_word} saved to the '{args.output_dir}' subdirectory as a {verb} TIFF.")
-    else:
-        print("Converted raw files to tifs, inverting and balancing with negfix8...")
-        converted_files = adjust_tifs_with_negfix8(tifs, args)
-        file_word = "file" if len(converted_files) == 1 else "files"
-        sys.stdout.write("\n")
-        print(f"Done. {len(converted_files)} {file_word} saved to the '{args.output_dir}' subdirectory as processed TIFF.")
+    if args.validate:
+        validate_conversions(data, tifs, args)
+        
+    verb = "raw"
+    if args.e6:
+        verb = "auto-leveled"
+    elif args.unadjusted:
+        verb = "unadjusted"
+    elif args.bw:
+        verb = "inverted and auto-leveled greyscale"
+    elif args.bw_rgb:
+        verb = "inverted and auto-leveled RGB"
+        
+    file_word = "file" if len(tifs) == 1 else "files"
+    print(f"Done. {len(tifs)} {file_word} saved to the '{args.output_dir}' subdirectory as a {verb} TIFF.")
 
 if __name__ == "__main__":
     # ThreadPoolExecutor is used for conversion, so the __main__ guard
