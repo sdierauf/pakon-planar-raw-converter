@@ -478,8 +478,9 @@ def convert_raw_to_tiff(name, size_parameter, program_args, dt_str):
     16-bit RGB TIFF as an in-memory bytes object. No temporary files are written.
     The caller is responsible for writing results to disk in chronological order.
     """
+    folder_prefix = os.path.basename(os.getcwd()).replace(' ', '_')
     base_name = os.path.splitext(name)[0]
-    destination_file = f"{base_name}.tif"
+    destination_file = f"{folder_prefix}_{base_name}.tif"
     
     # The final path goes straight into the output directory
     destination_file = os.path.join(program_args.output_dir, destination_file)
